@@ -1,5 +1,7 @@
 # Art.Mailgun
 
+Wrapper for mailgun-js
+
 > Initialized by Art.Build.Configurator
 
 ### Install

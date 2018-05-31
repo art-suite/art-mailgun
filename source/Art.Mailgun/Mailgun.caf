@@ -1,0 +1,92 @@
+import &ArtStandardLib, {} &MailgunJs
+
+class Mailgun
+
+  ###
+    IN:
+      options:
+        useAltDomain: if config.altDomain is set, use it instead of domain.
+        fromName: if 'from' is not set,
+
+        # PLUS the mailgun-js send-options
+        # SEE: https://www.npmjs.com/package/mailgun-js
+        # EXAMPLE:
+        from:     'Excited User <me@samples.mailgun.org>'
+        to:       'serobnic@mail.ru'
+        subject:  'Hello'
+        text:     'Testing some Mailgun awesomeness!'
+
+  @sendEmail: (options) ->
+    {verbose, fromName, useAltDomain, domain, mailgunJs} = preprocessOptions options
+
+    options.from ?= "" feedback@#{domain}
+    options.from =  "#{fromName} <#{options.from}>" if fromName
+
+    log Mailgun.sendEmail: {options, domain} if verbose
+
+    Promise.then ->
+      if mailgunJs
+        Promise.then -> mailgunJs.messages().send options
+        .tap (emailResult) -> log Mailgun.sendEmail: success: {options, domain, emailResult} if verbose
+        .tapCatch (error)  -> log Mailgun.sendEmail: failure: {options, domain, error}       if verbose
+
+      else
+        {}
+          message:  "Mailgun not setup. Mail not actually sent. (required config: Art.Mailgun.apiKey and .domain)"
+          options
+          domain
+          &Config.config
+
+  # USING: https://www.npmjs.com/package/mailgun-js#generic-requests
+  # AND:  https://documentation.mailgun.com/en/latest/api-events.html#events
+
+  ###
+    IN:
+      begin
+      end
+      ascending
+      limit
+      query: any OTHER fields you want to match on
+
+  @getEvents: (options) =>
+    {mailgunJs, domain, query, begin, end, ascending, limit} = preprocessOptions options
+    allEvents = []
+    loadEvents = (url) ->
+      # Promise.withCallback (callback) ->
+      [proto, rest] = url.split "//"
+      url = "" #{proto}//api:#{&Config.config.apiKey}@#{rest}
+      &ArtRestClient.getJson url
+      .then ({items, paging}) ->
+        minTime = maxTime = 0
+        now = toSeconds()
+        each {timestamp} in items
+          t = toSeconds timestamp
+
+          minTime = t if !minTime || minTime > t
+          maxTime = t if !maxTime || maxTime < t
+
+        # log {minTime: now - minTime, maxTime: now - maxTime}
+
+        allEvents = allEvents.concat items
+        if items.length == pageLimit && paging.next && allEvents.length < limit
+          log Mailgun.getEvents: {limit, loadedSoFar = allEvents.length}
+          loadEvents paging.next
+
+    begin = toSeconds begin if begin
+    end = toSeconds end if end
+    pageLimit = min limit, 300
+
+    relativeUrl = appendQuery "/#{domain}/events", merge query, {begin, end, ascending, limit: pageLimit}
+    loadEvents "https://api.mailgun.net/v3#{relativeUrl}"
+    .then ->
+
+      allEvents
+
+  preprocessOptions = (options) ->
+    {useAltDomain} = options if options
+    {verbose, mailgunJs, altMailgunJs} = &Config
+    {domain, altDomain} = &Config.config
+    if useAltDomain
+      merge options, {} verbose, domain: altDomain, mailgunJs: altMailgunJs
+    else
+      merge options, {} verbose, domain, mailgunJs
