@@ -1,0 +1,3 @@
+import &StandardImport
+suite: ->
+  test 'Mailgun' -> assert.eq 1, 1
