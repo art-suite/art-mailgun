@@ -1,4 +1,4 @@
-import &ArtStandardLib, {} &MailgunJs
+import &ArtStandardLib, &ArtRestClient
 
 class Mailgun
 
@@ -37,8 +37,24 @@ class Mailgun
           domain
           &Config.config
 
+  @validateEmail: (address, mailbox_verification = true) =>
+    getJson @createUrl :/address/private/validate {} address, mailbox_verification
+
   # USING: https://www.npmjs.com/package/mailgun-js#generic-requests
   # AND:  https://documentation.mailgun.com/en/latest/api-events.html#events
+
+  isSignedRegexp = ///i //api:
+  @signUrl: (url) ->
+    if isSignedRegexp.test url
+      url
+    else
+      [proto, rest] = url.split "//"
+      "" #{proto}//api:#{&Config.config.apiKey}@#{rest}
+
+  @createUrl: (relativeUrl, query) ->
+    appendQuery
+      urlJoin "https://api:#{&Config.config.apiKey}@api.mailgun.net/v3", relativeUrl
+      query
 
   ###
     IN:
@@ -50,37 +66,21 @@ class Mailgun
 
   @getEvents: (options) =>
     {mailgunJs, domain, query, begin, end, ascending, limit} = preprocessOptions options
+    begin = toSeconds begin if begin
+    end = toSeconds end if end
+    pageLimit = min limit, 300
+
     allEvents = []
     loadEvents = (url) ->
-      # Promise.withCallback (callback) ->
-      [proto, rest] = url.split "//"
-      url = "" #{proto}//api:#{&Config.config.apiKey}@#{rest}
-      &ArtRestClient.getJson url
+      getJson @signUrl url
       .then ({items, paging}) ->
-        minTime = maxTime = 0
-        now = toSeconds()
-        each {timestamp} in items
-          t = toSeconds timestamp
-
-          minTime = t if !minTime || minTime > t
-          maxTime = t if !maxTime || maxTime < t
-
-        # log {minTime: now - minTime, maxTime: now - maxTime}
-
         allEvents = allEvents.concat items
         if items.length == pageLimit && paging.next && allEvents.length < limit
           log Mailgun.getEvents: {limit, loadedSoFar = allEvents.length}
           loadEvents paging.next
 
-    begin = toSeconds begin if begin
-    end = toSeconds end if end
-    pageLimit = min limit, 300
-
-    relativeUrl = appendQuery "/#{domain}/events", merge query, {begin, end, ascending, limit: pageLimit}
-    loadEvents "https://api.mailgun.net/v3#{relativeUrl}"
-    .then ->
-
-      allEvents
+    loadEvents @createUrl "/#{domain}/events", merge query, {begin, end, ascending, limit: pageLimit}
+    .then -> allEvents
 
   preprocessOptions = (options) ->
     {useAltDomain} = options if options
