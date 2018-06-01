@@ -22,7 +22,12 @@ class Mailgun
     options.from ?= "" feedback@#{domain}
     options.from =  "#{fromName} <#{options.from}>" if fromName
 
-    log Mailgun.sendEmail: {options, domain} if verbose
+    if verbose
+      log Mailgun.sendEmail: {}
+        options: merge options,
+          text: options.text?.length
+          html: options.html?.length
+        domain
 
     Promise.then ->
       if mailgunJs
