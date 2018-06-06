@@ -16,6 +16,8 @@ class Mailgun
         subject:  'Hello'
         text:     'Testing some Mailgun awesomeness!'
 
+  @configured: -> !!&Config.mailgunJs
+
   @sendEmail: (options) ->
     {verbose, fromName, useAltDomain, domain, mailgunJs} = preprocessOptions options
 
